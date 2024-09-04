@@ -35,7 +35,7 @@ from diffusers.models.attention_processor import Attention, AttentionProcessor
 
 from transformers import CLIPImageProcessor, CLIPTextModel, CLIPTokenizer
 from .renderer.project import UVProjection as UVP
-
+from .renderer.ray_casting import get_plane_images
 
 from .syncmvd.attention import SamplewiseAttnProcessor2_0, replace_attention_processors
 from .syncmvd.prompt import *
@@ -464,10 +464,37 @@ class StableSyncMVDPipeline(StableDiffusionControlNetPipeline):
 
 		latent_tex = self.uvp.set_noise_texture()
 		noise_views = self.uvp.render_textured_views()
+        
+        # TODO 1: Add Occluded Images Here
+        occluded_views = get_plane_images(
+            self.uvp_rgb.mesh,
+            self.camera_poses,
+            0.9, # Field of view in radians (e.g., 0.9 radians ≈ 51.6 degrees)
+            4, # Max hits
+        )
+        
+        occluded_images = [v['images'] for v in occluded_views]
+        # Step 1: Stack occluded images into a single tensor
+        # occluded_images has shape (hits, views, H, W, C)
+
+        # Convert occluded_images to a tensor
+        occluded_images_tensor = torch.stack([torch.tensor(img) for img in occluded_images])
+        # Step 2: Permute to get (hits * views, C, H, W)
+        occluded_images_tensor = occluded_images_tensor.permute(0, 1, 4, 2, 3)  # Permuting to (hits, views, C, H, W)
+
+        # Step 3: Reshape to (-1, C, H, W)
+        # occluded_images_tensor = occluded_images_tensor.reshape(-1, *occluded_images_tensor.shape[2:5])
+        occluded_images_list = [[occluded_images_tensor[hit, view] for view in range(occluded_images_tensor.size(1))]
+                        for hit in range(occluded_images_tensor.size(0))]
+        
 		foregrounds = [view[:-1] for view in noise_views]
 		masks = [view[-1:] for view in noise_views]
 		composited_tensor = composite_rendered_view(self.scheduler, latents, foregrounds, masks, timesteps[0]+1)
 		latents = composited_tensor.type(latents.dtype)
+
+        composited_tesnors = [composite_rendered_view(self.scheduler, latents, views_image, masks, timesteps[0]+1) for views_image in occluded_images_list]
+        occluded_latents = [c.type(latents.dtype) for c in composited_tesnors]
+  
 		self.uvp.to("cpu")
 
 
@@ -537,7 +564,7 @@ class StableSyncMVDPipeline(StableDiffusionControlNetPipeline):
 						prompt_embeds_batches = [torch.index_select(controlnet_prompt_embeds, dim=0, index=torch.tensor(meta[0], device=self._execution_device)) for meta in self.group_metas]
 						conditioning_images_batches = [torch.index_select(conditioning_images, dim=0, index=torch.tensor(meta[0], device=self._execution_device)) for meta in self.group_metas]
 
-						for model_input_batch ,prompt_embeds_batch, conditioning_images_batch \
+						for model_input_batch, prompt_embeds_batch, conditioning_images_batch \
 							in zip (model_input_batches, prompt_embeds_batches, conditioning_images_batches):
 							down_block_res_samples, mid_block_res_sample = self.controlnet(
 								model_input_batch,

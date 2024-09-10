@@ -216,6 +216,7 @@ class UVProjection():
 			self.construct_uv_mesh()
 		self.calculate_tex_gradient()
 		self.calculate_visible_triangle_mask()
+        # Use pre-defined cosine maps
 		_,_,_,cos_maps,_, _ = self.render_geometry()
 		self.calculate_cos_angle_weights(cos_maps)
 
@@ -449,6 +450,54 @@ class UVProjection():
 			images_predicted = self.renderer(tmp_mesh, cameras=self.cameras[i], lights=self.lights, device=self.device)
 			predicted_rgb = images_predicted[..., :-1]
 			loss += (((predicted_rgb[...] - views[i]))**2).sum()
+		loss.backward(retain_graph=False)
+		optimizer.step()
+
+		total_weights = 0
+		baked = 0
+		for i in range(len(bake_maps)):
+			normalized_baked_map = bake_maps[i].detach() / (self.gradient_maps[i] + 1E-8)
+			bake_map = voronoi_solve(normalized_baked_map, self.gradient_maps[i][...,0])
+			weight = self.visible_triangles[i] * (self.cos_maps[i]) ** exp
+			if noisy:
+				noise = torch.rand(weight.shape[:-1]+(1,), generator=generator).type(weight.dtype).to(weight.device)
+				weight *= noise
+			total_weights += weight
+			baked += bake_map * weight
+		baked /= total_weights + 1E-8
+		baked = voronoi_solve(baked, total_weights[...,0])
+
+		bake_tex = TexturesUV([baked], tmp_mesh.textures.faces_uvs_padded(), tmp_mesh.textures.verts_uvs_padded(), sampling_mode=self.sampling_mode)
+		tmp_mesh.textures = bake_tex
+		extended_mesh = tmp_mesh.extend(len(self.cameras))
+		images_predicted = self.renderer(extended_mesh, cameras=self.cameras, lights=self.lights)
+		learned_views = [image.permute(2, 0, 1) for image in images_predicted]
+
+		return learned_views, baked.permute(2, 0, 1), total_weights.permute(2, 0, 1)
+
+
+    @torch.enable_grad()
+    def _bake_texture(self, views=None, main_views=[], cos_weighted=True, channels=None, exp=None, noisy=False, generator=None):
+		if not exp:
+			exp=1
+		if not channels:
+			channels = self.channels
+		views = [view.permute(1, 2, 0) for view in views]
+
+		tmp_mesh = self.mesh
+		bake_maps = [torch.zeros(self.target_size+(views[0].shape[2],), device=self.device, requires_grad=True) for view in views]
+		optimizer = torch.optim.SGD(bake_maps, lr=1, momentum=0)
+		optimizer.zero_grad()
+		loss = 0
+		for i in range(len(self.cameras)):
+            for j in range(self.hits):
+                # Modify visible faces of tmp_mesh
+                
+                bake_tex = TexturesUV([bake_maps[i]], tmp_mesh.textures.faces_uvs_padded(), tmp_mesh.textures.verts_uvs_padded(), sampling_mode=self.sampling_mode)
+                tmp_mesh.textures = bake_tex
+                images_predicted = self.renderer(tmp_mesh, cameras=self.cameras[i], lights=self.lights, device=self.device)
+                predicted_rgb = images_predicted[..., :-1]
+                loss += (((predicted_rgb[...] - views[i]))**2).sum()
 		loss.backward(retain_graph=False)
 		optimizer.step()
 

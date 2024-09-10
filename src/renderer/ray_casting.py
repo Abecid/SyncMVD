@@ -104,6 +104,7 @@ def get_plane_images(mesh, views, camera_angle_x, max_hits, image_height=512, im
                     point, normal, color, face_idx = hits_per_ray[ray_idx][i]
                     depth = np.linalg.norm(point - c2w[:3, 3])
 
+                    # Save cosine maps
                     GenDepths[i, 0, u, v] = depth
                     GenDepths[i, 1:4, u, v] = normal
                     GenDepths[i, 4:7, u, v] = color

@@ -476,8 +476,8 @@ class UVProjection():
 		return learned_views, baked.permute(2, 0, 1), total_weights.permute(2, 0, 1)
 
 
-    @torch.enable_grad()
-    def _bake_texture(self, views=None, main_views=[], cos_weighted=True, channels=None, exp=None, noisy=False, generator=None):
+	@torch.enable_grad()
+	def _bake_texture(self, views=None, main_views=[], cos_weighted=True, channels=None, exp=None, noisy=False, generator=None):
 		if not exp:
 			exp=1
 		if not channels:
@@ -489,15 +489,14 @@ class UVProjection():
 		optimizer = torch.optim.SGD(bake_maps, lr=1, momentum=0)
 		optimizer.zero_grad()
 		loss = 0
-		for i in range(len(self.cameras)):
-            for j in range(self.hits):
-                # Modify visible faces of tmp_mesh
-                
-                bake_tex = TexturesUV([bake_maps[i]], tmp_mesh.textures.faces_uvs_padded(), tmp_mesh.textures.verts_uvs_padded(), sampling_mode=self.sampling_mode)
-                tmp_mesh.textures = bake_tex
-                images_predicted = self.renderer(tmp_mesh, cameras=self.cameras[i], lights=self.lights, device=self.device)
-                predicted_rgb = images_predicted[..., :-1]
-                loss += (((predicted_rgb[...] - views[i]))**2).sum()
+		for i in range(len(self.cameras)):    
+			for j in range(self.hits):
+				# Modify visible faces of tmp mesh
+				bake_tex = TexturesUV([bake_maps[i]], tmp_mesh.textures.faces_uvs_padded(), tmp_mesh.textures.verts_uvs_padded(), sampling_mode=self.sampling_mode)
+				tmp_mesh.textures = bake_tex
+				images_predicted = self.renderer(tmp_mesh, cameras=self.cameras[i], lights=self.lights, device=self.device)
+				predicted_rgb = images_predicted[..., :-1]
+				loss += (((predicted_rgb[...] - views[i]))**2).sum()
 		loss.backward(retain_graph=False)
 		optimizer.step()
 

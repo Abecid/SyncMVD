@@ -60,7 +60,7 @@ elif opt.cond_type == "depth":
 	controlnet = ControlNetModel.from_pretrained("lllyasviel/control_v11f1p_sd15_depth", variant="fp16", torch_dtype=torch.float16)			
 
 pipe = StableDiffusionControlNetPipeline.from_pretrained(
-	"runwayml/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
+	"stable-diffusion-v1-5/stable-diffusion-v1-5", controlnet=controlnet, torch_dtype=torch.float16
 )
 
 
@@ -79,7 +79,7 @@ result_tex_rgb, textured_views, v = syncmvd(
 	negative_prompt=opt.negative_prompt,
 	
 	generator=torch.manual_seed(opt.seed),
-	max_batch_size=48,
+	max_batch_size=64,
 	controlnet_guess_mode=opt.guess_mode,
 	controlnet_conditioning_scale = opt.conditioning_scale,
 	controlnet_conditioning_end_scale= opt.conditioning_scale_end,

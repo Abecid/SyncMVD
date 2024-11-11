@@ -4,17 +4,20 @@ import os
 
 from tqdm import tqdm
 
-max_hits = 2
+max_hits = 1
 style_prompt = "christmas style"
+
+objects_path = "Results.csv"
+meshes_path = "final_objects5"
 
 def main():
     # Read the CSV and extract the list of uids
-    df = pd.read_csv('Objects.csv')
+    df = pd.read_csv(objects_path)
     uid_list = df['uid'].tolist()
 
     # Loop through the uid list and run the experiment for each uid
     for uid in tqdm(uid_list):
-        config_path = f"objaverse/{uid}/config.yaml"
+        config_path = f"{meshes_path}/{uid}/config.yaml"
         
         if not os.path.exists(config_path):
             print(f"Config file missing: {config_path}")
